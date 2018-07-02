@@ -23,6 +23,7 @@
 #define REPO_PROP_IS_READONLY "is-readonly"
 #define REPO_PROP_SERVER_URL  "server-url"
 #define REPO_PROP_SYNC_INTERVAL "sync-interval"
+#define REPO_SYNC_WORKTREE_NAME "sync-worktree-name"
 
 struct _SeafRepoManager;
 typedef struct _SeafRepo SeafRepo;
@@ -130,6 +131,9 @@ seaf_repo_from_commit (SeafRepo *repo, SeafCommit *commit);
 void
 seaf_repo_to_commit (SeafRepo *repo, SeafCommit *commit);
 
+void
+seaf_repo_set_name (SeafRepo *repo, const char *new_name);
+
 /*
  * Returns a list of all commits belongs to the repo.
  * The commits in the repos are all unique.
@@ -137,54 +141,11 @@ seaf_repo_to_commit (SeafRepo *repo, SeafCommit *commit);
 GList *
 seaf_repo_get_commits (SeafRepo *repo);
 
-int
-seaf_repo_index_add (SeafRepo *repo, const char *path);
-
-int
-seaf_repo_index_worktree_files (const char *repo_id,
-                                int version,
-                                const char *modifier,
-                                const char *worktree,
-                                const char *passwd,
-                                int enc_version,
-                                const char *random_key,
-                                char *root_id);
-
-int
-seaf_repo_index_rm (SeafRepo *repo, const char *path);
-
-char *
-seaf_repo_status (SeafRepo *repo);
-
-gboolean
-seaf_repo_is_worktree_changed (SeafRepo *repo);
-
-gboolean
-seaf_repo_is_index_unmerged (SeafRepo *repo);
-
 char *
 seaf_repo_index_commit (SeafRepo *repo, const char *desc,
                         gboolean is_force_commit,
                         gboolean is_initial_commit,
                         GError **error);
-
-int
-seaf_repo_checkout (SeafRepo *repo, const char *worktree_parent, char **error);
-
-int
-seaf_repo_checkout_commit (SeafRepo *repo, SeafCommit *commit, gboolean recover_merge,
-                           char **error);
-
-enum {
-    MERGE_STATUS_UNKNOWN = 0,
-    MERGE_STATUS_UPTODATE,
-    MERGE_STATUS_FAST_FORWARD,
-    MERGE_STATUS_REAL_MERGE,
-};
-
-int
-seaf_repo_merge (SeafRepo *repo, const char *branch, char **error,
-                 int *merge_status);
 
 GList *
 seaf_repo_diff (SeafRepo *repo, const char *old, const char *new, int fold_dir_diff, char **error);
@@ -240,6 +201,9 @@ seaf_repo_manager_repo_exists (SeafRepoManager *manager, const gchar *id);
 
 GList* 
 seaf_repo_manager_get_repo_list (SeafRepoManager *mgr, int start, int limit);
+
+GList *
+seaf_repo_manager_get_repo_id_list_by_server (SeafRepoManager *mgr, const char *server_url);
 
 GList *
 seaf_repo_manager_list_garbage_repos (SeafRepoManager *mgr);
@@ -315,68 +279,6 @@ seaf_repo_manager_set_repo_passwd (SeafRepoManager *manager,
                                    const char *passwd);
 
 int
-seaf_repo_manager_set_repo_relay_id (SeafRepoManager *mgr,
-                                     SeafRepo *repo,
-                                     const char *relay_id);
-
-int
-seaf_repo_manager_set_merge (SeafRepoManager *manager,
-                             const char *repo_id,
-                             const char *remote_head);
-
-int
-seaf_repo_manager_clear_merge (SeafRepoManager *manager,
-                               const char *repo_id);
-
-typedef struct {
-    gboolean in_merge;
-    char remote_head[41];
-} SeafRepoMergeInfo;
-
-int
-seaf_repo_manager_get_merge_info (SeafRepoManager *manager,
-                                  const char *repo_id,
-                                  SeafRepoMergeInfo *info);
-
-int
-seaf_repo_manager_get_common_ancestor (SeafRepoManager *manager,
-                                       const char *repo_id,
-                                       char *common_ancestor,
-                                       char *head_id);
-
-int
-seaf_repo_manager_set_common_ancestor (SeafRepoManager *manager,
-                                       const char *repo_id,
-                                       const char *common_ancestor,
-                                       const char *head_id);
-
-typedef struct {
-    char repo_id[41];
-    char worktree[SEAF_PATH_MAX];
-    int total_files;
-    int finished_files;
-    gboolean success;
-} CheckoutTask;
-
-typedef void (*CheckoutDoneCallback) (CheckoutTask *, SeafRepo *, void *);
-
-int
-seaf_repo_manager_add_checkout_task (SeafRepoManager *mgr,
-                                     SeafRepo *repo,
-                                     const char *worktree,
-                                     CheckoutDoneCallback done_cb,
-                                     void *cb_data);
-
-CheckoutTask *
-seaf_repo_manager_get_checkout_task (SeafRepoManager *mgr,
-                                     const char *repo_id);
-int
-seaf_repo_manager_update_repo_relay_info (SeafRepoManager *mgr,
-                                          SeafRepo *repo,
-                                          const char *new_addr,
-                                          const char *new_port);
-
-int
 seaf_repo_manager_update_repos_server_host (SeafRepoManager *mgr,
                                             const char *old_host,
                                             const char *new_host,
@@ -420,9 +322,7 @@ struct _TransferTask;
 struct _HttpTxTask;
 
 int
-seaf_repo_fetch_and_checkout (struct _TransferTask *task,
-                              struct _HttpTxTask *http_task,
-                              gboolean is_http,
+seaf_repo_fetch_and_checkout (struct _HttpTxTask *http_task,
                               const char *remote_head_id);
 
 gboolean
@@ -499,9 +399,27 @@ seaf_repo_manager_is_path_writable (SeafRepoManager *mgr,
                                     const char *repo_id,
                                     const char *path);
 
-/* File Sync Errors. */
+/*
+ * File Sync Errors.
+ * FIXME: better to be placed in sync manager.
+ */
+
+#define SYNC_ERROR_ID_FILE_LOCKED_BY_APP 0
+#define SYNC_ERROR_ID_FOLDER_LOCKED_BY_APP 1
+#define SYNC_ERROR_ID_FILE_LOCKED 2
+#define SYNC_ERROR_ID_INVALID_PATH 3
+#define SYNC_ERROR_ID_INDEX_ERROR 4
+#define SYNC_ERROR_ID_PATH_END_SPACE_PERIOD 5
+#define SYNC_ERROR_ID_PATH_INVALID_CHARACTER 6
+#define SYNC_ERROR_ID_FOLDER_PERM_DENIED 7
 
 GList *
 seaf_repo_manager_get_file_sync_errors (SeafRepoManager *mgr, int offset, int limit);
+
+void
+send_file_sync_error_notification (const char *repo_id,
+                                   const char *repo_name,
+                                   const char *path,
+                                   int err_id);
 
 #endif

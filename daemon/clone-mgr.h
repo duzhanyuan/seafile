@@ -60,16 +60,17 @@ struct _CloneTask {
     char                *random_key;
     char                 root_id[41];
     gboolean             is_readonly;
+    /* Set to true when the local folder name is the same as library name.
+     * Worktree folder name will be kept in sync with library name if this is true.
+     */
+    gboolean             sync_wt_name;
 
     /* Http sync fields */
     char                *server_url;
     char                *effective_url;
     gboolean             use_fileserver_port;
     int                  http_protocol_version;
-    gboolean             http_sync;
     char                 server_head_id[41];
-
-    gboolean             server_side_merge;
 };
 
 const char *
@@ -82,7 +83,7 @@ struct _SeafCloneManager {
     struct _SeafileSession  *seaf;
     sqlite3                 *db;
     GHashTable              *tasks;
-    struct CcnetTimer       *check_timer;
+    struct SeafTimer       *check_timer;
 };
 
 SeafCloneManager *

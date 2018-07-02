@@ -9,7 +9,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include <ccnet/job-mgr.h>
+#include "job-mgr.h"
 #include "seafile-session.h"
 #include "utils.h"
 #include "wt-monitor.h"
@@ -112,7 +112,6 @@ add_event_to_queue (WTStatus *status,
     }
 }
 
-#if 0
 static void
 process_one_event (const char* eventPath,
                    RepoWatchInfo *info,
@@ -180,8 +179,8 @@ process_one_event (const char* eventPath,
     g_free (filename);
     g_atomic_int_set (&info->status->last_changed, (gint)time(NULL));
 }
-#endif
 
+#if 0
 static void
 process_one_event (const char* eventPath,
                    RepoWatchInfo *info,
@@ -226,6 +225,7 @@ process_one_event (const char* eventPath,
     g_free (dirname);
     g_atomic_int_set (&info->status->last_changed, (gint)time(NULL));
 }
+#endif
 
 static void
 stream_callback (ConstFSEventStreamRef streamRef,
@@ -272,7 +272,6 @@ add_watch (SeafWTMonitor *monitor, const char* repo_id, const char* worktree)
     FSEventStreamRef stream;
 
     /* Create the stream, passing in a callback */
-    seaf_debug("Use kFSEventStreamCreateFlagWatchRoot\n");
     // kFSEventStreamCreateFlagFileEvents does not work for libraries with name
     // containing accent characters.
     struct FSEventStreamContext ctx = {0, monitor, NULL, NULL, NULL};
@@ -282,7 +281,7 @@ add_watch (SeafWTMonitor *monitor, const char* repo_id, const char* worktree)
                                  pathsToWatch,
                                  kFSEventStreamEventIdSinceNow,
                                  latency,
-                                 kFSEventStreamCreateFlagWatchRoot
+                                 kFSEventStreamCreateFlagFileEvents
                                  );
 
     CFRelease (mypaths[0]);
@@ -320,7 +319,7 @@ command_read_cb (CFFileDescriptorRef fdref,
     WatchCommand cmd;
     int n;
 
-    n = pipereadn (monitor->cmd_pipe[0], &cmd, sizeof(cmd));
+    n = seaf_pipe_readn (monitor->cmd_pipe[0], &cmd, sizeof(cmd));
     if (n != sizeof(cmd)) {
         seaf_warning ("[wt mon] failed to read command.\n");
         CFFileDescriptorEnableCallBacks (fdref, kCFFileDescriptorReadCallBack);
@@ -399,7 +398,7 @@ reply_watch_command (SeafWTMonitor *monitor, int result)
 {
     int n;
 
-    n = pipewriten (monitor->res_pipe[1], &result, sizeof(int));
+    n = seaf_pipe_writen (monitor->res_pipe[1], &result, sizeof(int));
     if (n != sizeof(int))
         seaf_warning ("[wt mon] fail to write command result.\n");
 }

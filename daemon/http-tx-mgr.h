@@ -54,6 +54,7 @@ enum HttpTaskError {
     HTTP_TASK_ERR_FILES_LOCKED,
     HTTP_TASK_ERR_REPO_DELETED,
     HTTP_TASK_ERR_REPO_CORRUPTED,
+    HTTP_TASK_ERR_FILE_LOCKED_ON_SERVER,
     HTTP_TASK_ERR_UNKNOWN,
     N_HTTP_TASK_ERROR,
 };
@@ -285,6 +286,12 @@ http_tx_manager_unlock_file (HttpTxManager *manager,
                              const char *token,
                              const char *repo_id,
                              const char *path);
+
+GHashTable *
+http_tx_manager_get_head_commit_ids (HttpTxManager *manager,
+                                     const char *host,
+                                     gboolean use_fileserver_port,
+                                     GList *repo_id_list);
 
 int
 http_tx_task_download_file_blocks (HttpTxTask *task, const char *file_id);

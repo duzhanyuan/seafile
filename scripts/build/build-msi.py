@@ -46,7 +46,6 @@ conf = {}
 # key names in the conf dictionary.
 CONF_VERSION            = 'version'
 CONF_LIBSEARPC_VERSION  = 'libsearpc_version'
-CONF_CCNET_VERSION      = 'ccnet_version'
 CONF_SEAFILE_VERSION    = 'seafile_version'
 CONF_SEAFILE_CLIENT_VERSION  = 'seafile_client_version'
 CONF_SRCDIR             = 'srcdir'
@@ -58,7 +57,6 @@ CONF_ONLY_CHINESE       = 'onlychinese'
 CONF_QT_ROOT            = 'qt_root'
 CONF_EXTRA_LIBS_DIR     = 'extra_libs_dir'
 CONF_QT5                = 'qt5'
-CONF_WITH_SHIB          = 'with_shib'
 CONF_BRAND              = 'brand'
 CONF_CERTFILE           = 'certfile'
 CONF_NO_STRIP           = 'nostrip'
@@ -203,7 +201,7 @@ def must_move(src, dst):
 
 class Project(object):
     '''Base class for a project'''
-    # Probject name, i.e. libseaprc/ccnet/seafile/seahub
+    # Probject name, i.e. libseaprc/seafile/seahub
     name = ''
 
     # A list of shell commands to configure/build the project
@@ -219,7 +217,7 @@ class Project(object):
         self.projdir = os.path.join(conf[CONF_BUILDDIR], '%s-%s' % (self.name, self.version))
 
     def get_version(self):
-        # libsearpc and ccnet can have different versions from seafile.
+        # libsearpc can have different versions from seafile.
         raise NotImplementedError
 
     def get_source_commit_id(self):
@@ -280,35 +278,11 @@ class Libsearpc(Project):
     def get_version(self):
         return conf[CONF_LIBSEARPC_VERSION]
 
-class Ccnet(Project):
-    name = 'ccnet'
-
-    def __init__(self):
-        Project.__init__(self)
-        self.build_commands = [
-            'sh ./configure --prefix=%s --disable-compile-demo' % to_mingw_path(self.prefix),
-            concurrent_make(),
-            '%s install' % get_make_path(),
-        ]
-
-    def get_version(self):
-        return conf[CONF_CCNET_VERSION]
-
-    def before_build(self):
-        macros = {}
-        # SET CCNET_SOURCE_COMMIT_ID, so it can be printed in the log
-        macros['CCNET_SOURCE_COMMIT_ID'] = '\\"%s\\"' % self.get_source_commit_id()
-
-        self.append_cflags(macros)
-
 class Seafile(Project):
     name = 'seafile'
     def __init__(self):
         Project.__init__(self)
-        if breakpad_enabled():
-            enable_breakpad = '--enable-breakpad'
-        else:
-            enable_breakpad = ''
+        enable_breakpad = '--enable-breakpad'
         self.build_commands = [
             'sh ./configure %s --prefix=%s' % (enable_breakpad, to_mingw_path(self.prefix)),
             concurrent_make(),
@@ -335,7 +309,7 @@ class SeafileClient(Project):
         flags = {
             'BUILD_SPARKLE_SUPPORT': 'ON',
             'USE_QT5': 'ON' if conf[CONF_QT5] else 'OFF',
-            'BUILD_SHIBBOLETH_SUPPORT': 'ON' if conf[CONF_WITH_SHIB] else 'OFF',
+            'BUILD_SHIBBOLETH_SUPPORT': 'ON',
             'CMAKE_BUILD_TYPE': build_type,
             'CMAKE_INSTALL_PREFIX': to_mingw_path(self.prefix),
             # ninja invokes cmd.exe which doesn't support msys/mingw path
@@ -358,6 +332,17 @@ class SeafileClient(Project):
     def before_build(self):
         shutil.copy(os.path.join(conf[CONF_EXTRA_LIBS_DIR], 'winsparkle.lib'), self.projdir)
 
+class SeafileShellExt(Project):
+    name = 'seafile-shell-ext'
+    def __init__(self):
+        Project.__init__(self)
+        self.build_commands = [
+            "bash extensions/build.sh",
+        ]
+
+    def get_version(self):
+        return conf[CONF_SEAFILE_CLIENT_VERSION]
+
 def check_targz_src(proj, version, srcdir):
     src_tarball = os.path.join(srcdir, '%s-%s.tar.gz' % (proj, version))
     if not os.path.exists(src_tarball):
@@ -367,7 +352,6 @@ def validate_args(usage, options):
     required_args = [
         CONF_VERSION,
         CONF_LIBSEARPC_VERSION,
-        CONF_CCNET_VERSION,
         CONF_SEAFILE_VERSION,
         CONF_SEAFILE_CLIENT_VERSION,
         CONF_SRCDIR,
@@ -391,22 +375,22 @@ def validate_args(usage, options):
 
     version = get_option(CONF_VERSION)
     libsearpc_version = get_option(CONF_LIBSEARPC_VERSION)
-    ccnet_version = get_option(CONF_CCNET_VERSION)
     seafile_version = get_option(CONF_SEAFILE_VERSION)
     seafile_client_version = get_option(CONF_SEAFILE_CLIENT_VERSION)
+    seafile_shell_ext_version = get_option(CONF_SEAFILE_CLIENT_VERSION)
 
     check_project_version(version)
     check_project_version(libsearpc_version)
-    check_project_version(ccnet_version)
     check_project_version(seafile_version)
     check_project_version(seafile_client_version)
+    check_project_version(seafile_shell_ext_version)
 
     # [ srcdir ]
     srcdir = to_win_path(get_option(CONF_SRCDIR))
     check_targz_src('libsearpc', libsearpc_version, srcdir)
-    check_targz_src('ccnet', ccnet_version, srcdir)
     check_targz_src('seafile', seafile_version, srcdir)
     check_targz_src('seafile-client', seafile_client_version, srcdir)
+    check_targz_src('seafile-shell-ext', seafile_shell_ext_version, srcdir)
 
     # [ builddir ]
     builddir = to_win_path(get_option(CONF_BUILDDIR))
@@ -449,7 +433,6 @@ def validate_args(usage, options):
 
     # [qt5]
     qt5 = get_option(CONF_QT5)
-    with_shib = get_option(CONF_WITH_SHIB)
     brand = get_option(CONF_BRAND)
     cert = get_option(CONF_CERTFILE)
     if cert is not None:
@@ -458,7 +441,6 @@ def validate_args(usage, options):
 
     conf[CONF_VERSION] = version
     conf[CONF_LIBSEARPC_VERSION] = libsearpc_version
-    conf[CONF_CCNET_VERSION] = ccnet_version
     conf[CONF_SEAFILE_VERSION] = seafile_version
     conf[CONF_SEAFILE_CLIENT_VERSION] = seafile_client_version
 
@@ -472,7 +454,6 @@ def validate_args(usage, options):
     conf[CONF_QT_ROOT] = qt_root
     conf[CONF_EXTRA_LIBS_DIR] = extra_libs_dir
     conf[CONF_QT5] = qt5
-    conf[CONF_WITH_SHIB] = with_shib
     conf[CONF_BRAND] = brand
     conf[CONF_CERTFILE] = cert
 
@@ -486,7 +467,6 @@ def show_build_info():
     info('------------------------------------------')
     info('seafile:                  %s' % conf[CONF_VERSION])
     info('libsearpc:                %s' % conf[CONF_LIBSEARPC_VERSION])
-    info('ccnet:                    %s' % conf[CONF_CCNET_VERSION])
     info('seafile:                  %s' % conf[CONF_SEAFILE_VERSION])
     info('seafile-client:           %s' % conf[CONF_SEAFILE_CLIENT_VERSION])
     info('qt-root:                  %s' % conf[CONF_QT_ROOT])
@@ -528,11 +508,6 @@ def parse_args():
                       dest=CONF_LIBSEARPC_VERSION,
                       nargs=1,
                       help='the version of libsearpc as specified in its "configure.ac". Must be digits delimited by dots, like 1.3.0')
-
-    parser.add_option(long_opt(CONF_CCNET_VERSION),
-                      dest=CONF_CCNET_VERSION,
-                      nargs=1,
-                      help='the version of ccnet as specified in its "configure.ac". Must be digits delimited by dots, like 1.3.0')
 
     parser.add_option(long_opt(CONF_SEAFILE_VERSION),
                       dest=CONF_SEAFILE_VERSION,
@@ -590,11 +565,6 @@ def parse_args():
                       dest=CONF_QT5,
                       action='store_true',
                       help='''build seafile client with qt5''')
-
-    parser.add_option(long_opt(CONF_WITH_SHIB),
-                      dest=CONF_WITH_SHIB,
-                      action='store_true',
-                      help='''build seafile client with shibboleth support''')
 
     parser.add_option(long_opt(CONF_BRAND),
                       dest=CONF_BRAND,
@@ -672,7 +642,7 @@ def dependency_walk(applet):
 def parse_depends_csv(path):
     '''parse the output of dependency walker'''
     libs = set()
-    our_libs = ['libsearpc', 'libccnet', 'libseafile']
+    our_libs = ['libsearpc', 'libseafile']
     def should_ignore_lib(lib):
         lib = lib.lower()
         if not os.path.exists(lib):
@@ -702,7 +672,7 @@ def parse_depends_csv(path):
     return set(libs)
 
 def copy_shared_libs(exes):
-    '''Copy shared libs need by seafile-applet.exe, such as libccnet,
+    '''Copy shared libs need by seafile-applet.exe, such as libsearpc,
     libseafile, etc. First we use Dependency walker to analyse
     seafile-applet.exe, and get an output file in csv format. Then we parse
     the csv file to get the list of shared libs.
@@ -726,9 +696,7 @@ def copy_dll_exe():
 
     filelist = [
         os.path.join(prefix, 'bin', 'libsearpc-1.dll'),
-        os.path.join(prefix, 'bin', 'libccnet-0.dll'),
         os.path.join(prefix, 'bin', 'libseafile-0.dll'),
-        os.path.join(prefix, 'bin', 'ccnet.exe'),
         os.path.join(prefix, 'bin', 'seaf-daemon.exe'),
         os.path.join(SeafileClient().projdir, 'seafile-applet.exe'),
     ]
@@ -737,8 +705,8 @@ def copy_dll_exe():
         must_copy(name, destdir)
 
     extdlls = [
-        os.path.join(SeafileClient().projdir, 'extensions', 'lib', 'seafile_shell_ext.dll'),
-        os.path.join(SeafileClient().projdir, 'extensions', 'lib', 'seafile_shell_ext64.dll'),
+        os.path.join(SeafileShellExt().projdir, 'extensions', 'lib', 'seafile_ext.dll'),
+        os.path.join(SeafileShellExt().projdir, 'extensions', 'lib', 'seafile_ext64.dll'),
     ]
 
     customdir = os.path.join(conf[CONF_BUILDDIR], 'pack', 'custom')
@@ -813,6 +781,12 @@ def prepare_msi():
 
     msi_dir = os.path.join(Seafile().projdir, 'msi')
 
+    # These files are in seafile-shell-ext because they're shared between seafile/seadrive
+    ext_wxi = os.path.join(SeafileShellExt().projdir, 'msi', 'ext.wxi')
+    must_copy(ext_wxi, msi_dir)
+    shell_wxs = os.path.join(SeafileShellExt().projdir, 'msi', 'shell.wxs')
+    must_copy(shell_wxs, msi_dir)
+
     must_copytree(msi_dir, pack_dir)
     must_mkdir(os.path.join(pack_dir, 'bin'))
 
@@ -841,7 +815,10 @@ def sign_installers():
     pack_dir = os.path.join(conf[CONF_BUILDDIR], 'pack')
     installers = glob.glob(os.path.join(pack_dir, '*.msi'))
     for fn in installers:
-        do_sign(certfile, fn, desc='Seafile Installer')
+        name = conf[CONF_BRAND]
+        if name == 'seafile':
+            name = 'Seafile'
+        do_sign(certfile, fn, desc='{} Installer'.format(name))
 
 def do_sign(certfile, fn, desc=None):
     certfile = to_win_path(certfile)
@@ -867,9 +844,9 @@ def strip_symbols():
         name = os.path.basename(dll).lower()
         if 'qt' in name:
             do_strip(dll)
-        if name == 'seafile_shell_ext.dll':
+        if name == 'seafile_ext.dll':
             do_strip(dll)
-        elif name == 'seafile_shell_ext64.dll':
+        elif name == 'seafile_ext64.dll':
             do_strip(dll, stripcmd='x86_64-w64-mingw32-strip')
 
 def edit_fragment_wxs():
@@ -894,9 +871,6 @@ def edit_fragment_wxs():
     with open(file_path, 'w') as fp:
         fp.write(content)
 
-def breakpad_enabled():
-    return conf[CONF_VERSION] >= '5.0.3'
-
 def generate_breakpad_symbols():
     seafiledir = Seafile().projdir
     script = os.path.join(seafiledir, 'scripts/breakpad.py')
@@ -913,8 +887,7 @@ def generate_breakpad_symbols():
 
 def build_msi():
     prepare_msi()
-    if breakpad_enabled():
-        generate_breakpad_symbols()
+    generate_breakpad_symbols()
     if conf[CONF_DEBUG] or conf[CONF_NO_STRIP]:
         info('Would not strip exe/dll symbols since --debug or --nostrip is specified')
     else:
@@ -951,34 +924,22 @@ def move_msi():
     pack_dir = os.path.join(conf[CONF_BUILDDIR], 'pack')
     src_msi = os.path.join(pack_dir, 'seafile.msi')
     brand = conf[CONF_BRAND]
-    if not conf[CONF_WITH_SHIB]:
-        dst_msi = os.path.join(conf[CONF_OUTPUTDIR], '%s-%s.msi' % (brand, conf[CONF_VERSION]))
-    else:
-        dst_msi = os.path.join(conf[CONF_OUTPUTDIR], '%s-%s-shibboleth.msi' % (brand, conf[CONF_VERSION]))
+    dst_msi = os.path.join(conf[CONF_OUTPUTDIR], '%s-%s.msi' % (brand, conf[CONF_VERSION]))
 
     # move msi to outputdir
     must_copy(src_msi, dst_msi)
 
     if not conf[CONF_ONLY_CHINESE]:
         src_msi_en = os.path.join(pack_dir, 'seafile-en.msi')
-        if not conf[CONF_WITH_SHIB]:
-            dst_msi_en = os.path.join(conf[CONF_OUTPUTDIR], '%s-%s-en.msi' % (brand, conf[CONF_VERSION]))
-        else:
-            dst_msi_en = os.path.join(conf[CONF_OUTPUTDIR], '%s-%s-en-shibboleth.msi' % (brand, conf[CONF_VERSION]))
+        dst_msi_en = os.path.join(conf[CONF_OUTPUTDIR], '%s-%s-en.msi' % (brand, conf[CONF_VERSION]))
         must_copy(src_msi_en, dst_msi_en)
-        src_msi_de = os.path.join(pack_dir, 'seafile-de.msi')
-        if not conf[CONF_WITH_SHIB]:
-            dst_msi_de = os.path.join(conf[CONF_OUTPUTDIR], '%s-%s-de.msi' % (brand, conf[CONF_VERSION]))
-        else:
-            dst_msi_de = os.path.join(conf[CONF_OUTPUTDIR], '%s-%s-de-shibboleth.msi' % (brand, conf[CONF_VERSION]))
-        must_copy(src_msi_de, dst_msi_de)
 
     print '---------------------------------------------'
     print 'The build is successfully. Output is:'
     print '>>\t%s' % dst_msi
     if not conf[CONF_ONLY_CHINESE]:
         print '>>\t%s' % dst_msi_en
-        print '>>\t%s' % dst_msi_de
+        # print '>>\t%s' % dst_msi_de
     print '---------------------------------------------'
 
 def check_tools():
@@ -1008,26 +969,26 @@ def main():
     check_tools()
 
     libsearpc = Libsearpc()
-    ccnet = Ccnet()
     seafile = Seafile()
     seafile_client = SeafileClient()
+    seafile_shell_ext = SeafileShellExt()
 
     libsearpc.uncompress()
     libsearpc.build()
-
-    ccnet.uncompress()
-    ccnet.build()
 
     seafile.uncompress()
     seafile.build()
 
     seafile_client.uncompress()
+    seafile_shell_ext.uncompress()
+
     seafile_client.build()
+    seafile_shell_ext.build()
 
     build_msi()
     if not conf[CONF_ONLY_CHINESE]:
         build_english_msi()
-        build_german_msi()
+        # build_german_msi()
 
     if need_sign():
         sign_installers()
